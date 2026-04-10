@@ -1,17 +1,17 @@
-//! # Linear Algebra Library
-//! 
-//! A robust linear algebra library implemented in Rust.
-//! This library provides structures for vector and matrix manipulation,
-//! along with fundamental algorithms such as the Gram-Schmidt orthonormalization process.
+#![no_std] // We are officially an embedded library now.
 
-pub mod vector;
-pub mod matrix;
+#[cfg(any(feature = "std", test))]
+#[macro_use]
+extern crate std; // Use full std for tests and dev on MacOS.
+
 pub mod algorithms;
+pub mod matrix;
+pub mod vector;
 
-/// Re-exporting main types for simplified usage
-pub use vector::Vector;
+pub use algorithms::{gram_schmidt, qr_decomposition, solve_linear_system};
 pub use matrix::Matrix;
-pub use algorithms::gram_schmidt;
+/// Re-export main types for simplified usage
+pub use vector::Vector;
 
 #[cfg(test)]
 mod tests {
@@ -19,11 +19,10 @@ mod tests {
 
     #[test]
     fn test_integration_vector_matrix() {
-        // A small integration test to verify communication between modules
-        let v = Vector::new(vec![1.0, 2.0]);
+        let v = Vector::new([1.0, 2.0]);
         assert_eq!(v.dim(), 2);
-        
-        let m = Matrix::new(2, 2);
+
+        let m = Matrix::<2, 2>::new();
         assert_eq!(m.get_rows(), 2);
     }
 }
