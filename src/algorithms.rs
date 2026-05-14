@@ -1,6 +1,8 @@
+use core::f32::EPSILON;
+
 use crate::matrix::Matrix;
 use crate::vector::Vector;
-use libm::fabsf;
+use libm::{fabsf, sqrtf};
 
 /// Transforms a set of N vectors of size M into an orthonormal basis.
 ///
@@ -71,7 +73,7 @@ pub fn solve_upper_triangular<const N: usize>(
     let b_data = b.get_data();
 
     for i in (0..N).rev() {
-        let diag = r.get(i, i).unwrap_or(0.0);
+        let diag = r[(i, i)];
 
         if fabsf(diag) < 1e-10 {
             return None; // Singular matrix
@@ -79,7 +81,7 @@ pub fn solve_upper_triangular<const N: usize>(
 
         let mut sum = 0.0;
         for j in (i + 1)..N {
-            sum += r.get(i, j).unwrap_or(0.0) * x_data[j];
+            sum += r[(i, j)] * x_data[j];
         }
 
         x_data[i] = (b_data[i] - sum) / diag;
@@ -109,6 +111,43 @@ pub fn solve_linear_system<const M: usize, const N: usize>(
     solve_upper_triangular(&r, &c)
 }
 
+pub fn jacobi_rotation(p: f32, q: f32, d: f32) -> (f32, f32) {
+    if fabsf(d) > EPSILON {
+        let tau: f32 = (q - p) / (2.0 * d);
+        let t = tau.signum() / (fabsf(tau) + sqrtf(1.0 + (tau * tau)));
+        let cos = 1.0 / sqrtf(1.0 + (t * t));
+        let sin = t * cos;
+        (cos, sin)
+    } else {
+        (1.0, 0.0)
+    }
+}
+
+pub fn svd_2x2(mat: &Matrix<2, 2>) -> (Matrix<2, 2>, Vector<2>, Matrix<2, 2>) {
+    let (a, b) = (mat.get_col(0).unwrap(), mat.get_col(1).unwrap());
+    let p = a.dot(&a);
+    let q = b.dot(&b);
+    let d = a.dot(&b);
+    let (cos, sin) = jacobi_rotation(p, q, d);
+    let a_prime = &(&a * cos) - &(&b * sin);
+    let b_prime = &(&a * sin) + &(&b * cos);
+
+    let sigma_1 = a_prime.l2_norm();
+    let sigma_2 = b_prime.l2_norm();
+    let u1 = &a_prime * (1.0 / sigma_1);
+    let u2 = &b_prime * (1.0 / sigma_2);
+
+    let u = Matrix::from_cols([u1, u2]);
+    let mut v = Matrix::<2, 2>::new();
+    v[(0, 0)] = cos;
+    v[(0, 1)] = -sin;
+    v[(1, 0)] = sin;
+    v[(1, 1)] = cos;
+    let sigma = Vector::new([sigma_1, sigma_2]);
+
+    (u, sigma, v)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -129,10 +168,10 @@ mod tests {
     #[test]
     fn test_qr_decomposition_simple() {
         let mut a = Matrix::<2, 2>::new();
-        a.set(0, 0, 1.0);
-        a.set(0, 1, 1.0);
-        a.set(1, 0, 0.0);
-        a.set(1, 1, 1.0);
+        a[(0, 0)] = 1.0;
+        a[(0, 1)] = 1.0;
+        a[(1, 0)] = 0.0;
+        a[(1, 1)] = 1.0;
 
         let (q, r) = qr_decomposition(&a);
 
@@ -146,9 +185,9 @@ mod tests {
     #[test]
     fn test_solve_upper_triangular() {
         let mut r = Matrix::<2, 2>::new();
-        r.set(0, 0, 2.0);
-        r.set(0, 1, 1.0);
-        r.set(1, 1, 1.0);
+        r[(0, 0)] = 2.0;
+        r[(0, 1)] = 1.0;
+        r[(1, 1)] = 1.0;
         let b = Vector::new([5.0, 1.0]);
 
         let x = solve_upper_triangular(&r, &b).unwrap();
@@ -159,10 +198,10 @@ mod tests {
     #[test]
     fn test_solve_linear_system_2d() {
         let mut a = Matrix::<2, 2>::new();
-        a.set(0, 0, 1.0);
-        a.set(0, 1, 1.0);
-        a.set(1, 0, 1.0);
-        a.set(1, 1, -1.0);
+        a[(0, 0)] = 1.0;
+        a[(0, 1)] = 1.0;
+        a[(1, 0)] = 1.0;
+        a[(1, 1)] = -1.0;
         let b = Vector::new([3.0, 1.0]);
 
         let x = solve_linear_system(&a, &b).unwrap();
@@ -187,12 +226,12 @@ mod tests {
     #[test]
     fn test_qr_3x2_matrix() {
         let mut a = Matrix::<3, 2>::new();
-        a.set(0, 0, 12.0);
-        a.set(0, 1, -51.0);
-        a.set(1, 0, 6.0);
-        a.set(1, 1, 167.0);
-        a.set(2, 0, -4.0);
-        a.set(2, 1, 24.0);
+        a[(0, 0)] = 12.0;
+        a[(0, 1)] = -51.0;
+        a[(1, 0)] = 6.0;
+        a[(1, 1)] = 167.0;
+        a[(2, 0)] = -4.0;
+        a[(2, 1)] = 24.0;
 
         let (q, r) = qr_decomposition(&a);
         assert_eq!(&q * &r, a);
@@ -201,12 +240,12 @@ mod tests {
     #[test]
     fn test_back_substitution_3d() {
         let mut r = Matrix::<3, 3>::new();
-        r.set(0, 0, 1.0);
-        r.set(0, 1, 2.0);
-        r.set(0, 2, 3.0);
-        r.set(1, 1, 1.0);
-        r.set(1, 2, 2.0);
-        r.set(2, 2, 1.0);
+        r[(0, 0)] = 1.0;
+        r[(0, 1)] = 2.0;
+        r[(0, 2)] = 3.0;
+        r[(1, 1)] = 1.0;
+        r[(1, 2)] = 2.0;
+        r[(2, 2)] = 1.0;
         let b = Vector::new([6.0, 3.0, 1.0]);
         let x = solve_upper_triangular(&r, &b).unwrap();
         assert_eq!(x, Vector::new([1.0, 1.0, 1.0]));
@@ -226,5 +265,15 @@ mod tests {
         let u = Vector::new([1.0, 0.0, 0.0]);
         let proj = v.orthogonal_projection(&u);
         assert_eq!(proj, Vector::new([1.0, 0.0, 0.0]));
+    }
+    #[test]
+    fn test_svd_2X2() {
+        let mut a = Matrix::<2, 2>::new();
+        a[(0, 0)] = 2.0;
+        a[(0, 1)] = 1.0;
+        a[(1, 0)] = 1.0;
+        a[(1, 1)] = 2.0;
+        let (u, sigma, v) = svd_2x2(&a);
+        assert!(u.get_col(0).unwrap().dot(&u.get_col(1).unwrap()).abs() < 1e-5);
     }
 }

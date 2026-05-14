@@ -1,6 +1,6 @@
 use crate::vector::Vector;
 use core::cmp::PartialEq;
-use core::ops::{Add, Mul, Sub};
+use core::ops::{Add, Index, IndexMut, Mul, Sub};
 use libm::fabsf;
 
 /// A Static Matrix of ROWS x COLS, stored entirely on the stack.
@@ -26,27 +26,6 @@ impl<const ROWS: usize, const COLS: usize> Matrix<ROWS, COLS> {
     /// Returns the number of columns.
     pub const fn get_cols(&self) -> usize {
         COLS
-    }
-
-    /// Retrieves a value at (row, col).
-    pub fn get(&self, row: usize, col: usize) -> Option<f32> {
-        if row < ROWS && col < COLS {
-            Some(self.data[row][col])
-        } else {
-            None
-        }
-    }
-
-    /// Sets a value at (row, col).
-    ///
-    /// # Panics
-    /// Panics if indices are out of bounds.
-    pub fn set(&mut self, row: usize, col: usize, val: f32) {
-        if row < ROWS && col < COLS {
-            self.data[row][col] = val;
-        } else {
-            panic!("Matrix index out of bounds: ({}, {})", row, col);
-        }
     }
 
     /// Extracts a column as a Static Vector of size ROWS.
@@ -112,7 +91,7 @@ impl<const ROWS: usize, const COLS: usize> Matrix<ROWS, COLS> {
         let mut result = Matrix::<COLS, ROWS>::new();
         for i in 0..ROWS {
             for j in 0..COLS {
-                result.set(j, i, self.data[i][j]);
+                result[(j, i)] = self.data[i][j];
             }
         }
         result
@@ -123,7 +102,7 @@ impl<const ROWS: usize, const COLS: usize> Matrix<ROWS, COLS> {
         let mut result = Self::new();
         for i in 0..ROWS {
             for j in 0..COLS {
-                result.set(i, j, self.data[i][j] * coef);
+                result[(i, j)] = self.data[i][j] * coef;
             }
         }
         result
@@ -133,7 +112,7 @@ impl<const ROWS: usize, const COLS: usize> Matrix<ROWS, COLS> {
 pub fn identity<const SIZE: usize>() -> Matrix<SIZE, SIZE> {
     let mut result = Matrix::<SIZE, SIZE>::new();
     for i in 0..SIZE {
-        result.set(i, i, 1.0)
+        result[(i, i)] = 1.0
     }
     result
 }
@@ -145,7 +124,7 @@ impl<const ROWS: usize, const COLS: usize> Add<&Matrix<ROWS, COLS>> for &Matrix<
         let mut res = Matrix::new();
         for i in 0..ROWS {
             for j in 0..COLS {
-                res.set(i, j, self.data[i][j] + rhs.data[i][j]);
+                res[(i, j)] = self.data[i][j] + rhs.data[i][j];
             }
         }
         res
@@ -158,7 +137,7 @@ impl<const ROWS: usize, const COLS: usize> Sub<&Matrix<ROWS, COLS>> for &Matrix<
         let mut res = Matrix::new();
         for i in 0..ROWS {
             for j in 0..COLS {
-                res.set(i, j, self.data[i][j] - rhs.data[i][j]);
+                res[(i, j)] = self.data[i][j] - rhs.data[i][j];
             }
         }
         res
@@ -187,6 +166,23 @@ impl<const ROWS: usize, const COLS: usize> PartialEq for Matrix<ROWS, COLS> {
     }
 }
 
+/// Retrieves a value at (row, col).
+impl<const ROWS: usize, const COLS: usize> Index<(usize, usize)> for Matrix<ROWS, COLS> {
+    type Output = f32;
+    fn index(&self, (row, col): (usize, usize)) -> &Self::Output {
+        &self.data[row][col]
+    }
+}
+
+/// Sets a value at (row, col).
+/// # Panics
+/// Panics if indices are out of bounds.
+impl<const ROWS: usize, const COLS: usize> IndexMut<(usize, usize)> for Matrix<ROWS, COLS> {
+    fn index_mut(&mut self, (row, col): (usize, usize)) -> &mut Self::Output {
+        &mut self.data[row][col]
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -201,26 +197,27 @@ mod tests {
     #[test]
     fn test_matrix_get_set() {
         let mut m = Matrix::<2, 2>::new();
-        m.set(0, 1, 42.0);
-        assert_eq!(m.get(0, 1), Some(42.0));
-        assert_eq!(m.get(1, 1), Some(0.0));
+        m[(0, 1)] = 42.0;
+        assert_eq!(m[(0, 1)], 42.0);
+        assert_eq!(m[(1, 1)], 0.0);
     }
 
     #[test]
+    #[should_panic]
     fn test_matrix_out_of_bounds() {
         let m = Matrix::<2, 2>::new();
-        assert_eq!(m.get(2, 0), None);
+        let _ = m[(2, 0)];
     }
 
     #[test]
     fn test_matrix_addition() {
         let mut m1 = Matrix::<2, 2>::new();
-        m1.set(0, 0, 1.0);
+        m1[(0, 0)] = 1.0;
         let mut m2 = Matrix::<2, 2>::new();
-        m2.set(0, 0, 2.0);
+        m2[(0, 0)] = 2.0;
         assert_eq!(&m1 + &m2, {
             let mut res = Matrix::<2, 2>::new();
-            res.set(0, 0, 3.0);
+            res[(0, 0)] = 3.0;
             res
         });
     }
@@ -228,46 +225,46 @@ mod tests {
     #[test]
     fn test_matrix_multiplication() {
         let mut m1 = Matrix::<2, 2>::new();
-        m1.set(0, 0, 1.0);
-        m1.set(0, 1, 2.0);
-        m1.set(1, 0, 3.0);
-        m1.set(1, 1, 4.0);
+        m1[(0, 0)] = 1.0;
+        m1[(0, 1)] = 2.0;
+        m1[(1, 0)] = 3.0;
+        m1[(1, 1)] = 4.0;
 
         let mut m2 = Matrix::<2, 1>::new();
-        m2.set(0, 0, 5.0);
-        m2.set(1, 0, 6.0);
+        m2[(0, 0)] = 5.0;
+        m2[(1, 0)] = 6.0;
 
         let res = &m1 * &m2;
-        assert_eq!(res.get(0, 0), Some(17.0)); // 1*5 + 2*6
-        assert_eq!(res.get(1, 0), Some(39.0)); // 3*5 + 4*6
+        assert_eq!(res[(0, 0)], 17.0); // 1*5 + 2*6
+        assert_eq!(res[(1, 0)], 39.0); // 3*5 + 4*6
     }
 
     #[test]
     fn test_matmul_accumulate() {
         let mut res = Matrix::<1, 1>::new();
-        res.set(0, 0, 10.0);
+        res[(0, 0)] = 10.0;
         let m1 = identity::<1>();
         let m2 = identity::<1>();
         res.matmul_accumulate(&m1, &m2);
-        assert_eq!(res.get(0, 0), Some(11.0));
+        assert_eq!(res[(0, 0)], 11.0);
     }
 
     #[test]
     fn test_matrix_transpose() {
         let mut m = Matrix::<1, 2>::new();
-        m.set(0, 0, 1.0);
-        m.set(0, 1, 2.0);
+        m[(0, 0)] = 1.0;
+        m[(0, 1)] = 2.0;
         let t = m.transpose();
         assert_eq!(t.get_rows(), 2);
         assert_eq!(t.get_cols(), 1);
-        assert_eq!(t.get(1, 0), Some(2.0));
+        assert_eq!(t[(1, 0)], 2.0);
     }
 
     #[test]
     fn test_matrix_col_extraction() {
         let mut m = Matrix::<2, 2>::new();
-        m.set(0, 1, 5.0);
-        m.set(1, 1, 10.0);
+        m[(0, 1)] = 5.0;
+        m[(1, 1)] = 10.0;
         let col = m.get_col(1).unwrap();
         assert_eq!(col, Vector::new([5.0, 10.0]));
     }
@@ -277,16 +274,16 @@ mod tests {
         let v1 = Vector::new([1.0, 2.0]);
         let v2 = Vector::new([3.0, 4.0]);
         let m = Matrix::from_cols([v1, v2]);
-        assert_eq!(m.get(1, 0), Some(2.0));
-        assert_eq!(m.get(1, 1), Some(4.0));
+        assert_eq!(m[(1, 0)], 2.0);
+        assert_eq!(m[(1, 1)], 4.0);
     }
 
     #[test]
     fn test_matrix_identity() {
         let id = identity::<3>();
-        assert_eq!(id.get(0, 0), Some(1.0));
-        assert_eq!(id.get(0, 1), Some(0.0));
-        assert_eq!(id.get(1, 1), Some(1.0));
-        assert_eq!(id.get(2, 2), Some(1.0));
+        assert_eq!(id[(0, 0)], 1.0);
+        assert_eq!(id[(0, 1)], 0.0);
+        assert_eq!(id[(1, 1)], 1.0);
+        assert_eq!(id[(2, 2)], 1.0);
     }
 }
