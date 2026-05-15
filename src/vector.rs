@@ -1,4 +1,4 @@
-use core::ops::{Add, Mul, Sub};
+use core::ops::{Add, Index, IndexMut, Mul, Sub};
 use libm::{fabsf, sqrtf};
 
 /// A Static Vector of size N, stored entirely on the stack.
@@ -106,6 +106,27 @@ impl<const N: usize> Add<&Vector<N>> for &Vector<N> {
     }
 }
 
+impl<const N: usize> Mul<f32> for Vector<N> {
+    type Output = Vector<N>;
+    fn mul(self, rhs: f32) -> Self::Output {
+        &self * rhs
+    }
+}
+
+impl<const N: usize> Add<Vector<N>> for Vector<N> {
+    type Output = Vector<N>;
+    fn add(self, rhs: Vector<N>) -> Self::Output {
+        &self + &rhs
+    }
+}
+
+impl<const N: usize> Sub<Vector<N>> for Vector<N> {
+    type Output = Vector<N>;
+    fn sub(self, rhs: Vector<N>) -> Self::Output {
+        &self - &rhs
+    }
+}
+
 impl<const N: usize> PartialEq for Vector<N> {
     fn eq(&self, other: &Self) -> bool {
         let epsilon = 1e-6;
@@ -115,6 +136,18 @@ impl<const N: usize> PartialEq for Vector<N> {
             }
         }
         true
+    }
+}
+impl<const N: usize> Index<usize> for Vector<N> {
+    type Output = f32;
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.data[index]
+    }
+}
+
+impl<const N: usize> IndexMut<usize> for Vector<N> {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.data[index]
     }
 }
 

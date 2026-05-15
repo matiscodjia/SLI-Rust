@@ -1,6 +1,6 @@
 use core::f32::EPSILON;
 
-use crate::matrix::Matrix;
+use crate::matrix::{identity, Matrix};
 use crate::vector::Vector;
 use libm::{fabsf, sqrtf};
 
@@ -19,12 +19,12 @@ pub fn gram_schmidt<const M: usize, const N: usize>(base: &[Vector<M>; N]) -> [V
         for j in 0..i {
             let u = &orthogonal_basis[j];
             let proj = v.orthogonal_projection(u);
-            q = &q - &proj;
+            q = q - proj;
         }
 
         let norm = q.l2_norm();
         if norm > 1e-6 {
-            q = &q * (1.0 / norm);
+            q = q * (1.0 / norm);
             orthogonal_basis[i] = q;
         } else {
             // Keep it as a null vector if it's not linearly independent
@@ -111,6 +111,36 @@ pub fn solve_linear_system<const M: usize, const N: usize>(
     solve_upper_triangular(&r, &c)
 }
 
+fn sort_svd<const M: usize, const N: usize>(
+    sigma: &mut Vector<N>,
+    u: &mut Matrix<M, N>,
+    v: &mut Matrix<N, N>,
+) {
+    for i in 0..N {
+        let mut max_idx = i;
+        for j in (i + 1)..N {
+            if sigma[j] > sigma[max_idx] {
+                max_idx = j;
+            }
+        }
+        if max_idx != i {
+            let tmp = sigma[i];
+            sigma[i] = sigma[max_idx];
+            sigma[max_idx] = tmp;
+
+            let col_i = u.get_col(i).unwrap();
+            let col_max = u.get_col(max_idx).unwrap();
+            u.set_col(i, &col_max);
+            u.set_col(max_idx, &col_i);
+
+            let col_i = v.get_col(i).unwrap();
+            let col_max = v.get_col(max_idx).unwrap();
+            v.set_col(i, &col_max);
+            v.set_col(max_idx, &col_i);
+        }
+    }
+}
+
 pub fn jacobi_rotation(p: f32, q: f32, d: f32) -> (f32, f32) {
     if fabsf(d) > EPSILON {
         let tau: f32 = (q - p) / (2.0 * d);
@@ -129,22 +159,85 @@ pub fn svd_2x2(mat: &Matrix<2, 2>) -> (Matrix<2, 2>, Vector<2>, Matrix<2, 2>) {
     let q = b.dot(&b);
     let d = a.dot(&b);
     let (cos, sin) = jacobi_rotation(p, q, d);
-    let a_prime = &(&a * cos) - &(&b * sin);
-    let b_prime = &(&a * sin) + &(&b * cos);
+    let a_prime = a * cos - b * sin;
+    let b_prime = a * sin + b * cos;
 
     let sigma_1 = a_prime.l2_norm();
     let sigma_2 = b_prime.l2_norm();
-    let u1 = &a_prime * (1.0 / sigma_1);
-    let u2 = &b_prime * (1.0 / sigma_2);
+    let u1 = if sigma_1 > EPSILON { a_prime * (1.0 / sigma_1) } else { a_prime };
+    let u2 = if sigma_2 > EPSILON { b_prime * (1.0 / sigma_2) } else { b_prime };
 
     let u = Matrix::from_cols([u1, u2]);
     let mut v = Matrix::<2, 2>::new();
     v[(0, 0)] = cos;
-    v[(0, 1)] = -sin;
-    v[(1, 0)] = sin;
+    v[(0, 1)] = sin;
+    v[(1, 0)] = -sin;
     v[(1, 1)] = cos;
     let sigma = Vector::new([sigma_1, sigma_2]);
 
+    (u, sigma, v)
+}
+
+pub fn svd<const M: usize, const N: usize>(
+    mat: &Matrix<M, N>,
+) -> (Matrix<M, N>, Vector<N>, Matrix<N, N>) {
+    let mut b = *mat;
+    let mut v = identity::<N>();
+    let max_iter = 100 * N * N;
+    let mut iter = 0;
+
+    loop {
+        let mut converged = true;
+        for p in 0..N {
+            for q in (p + 1)..N {
+                let col_p = b.get_col(p).unwrap();
+                let col_q = b.get_col(q).unwrap();
+
+                let dot_pp = col_p.dot(&col_p);
+                let dot_qq = col_q.dot(&col_q);
+                let dot_pq = col_p.dot(&col_q);
+
+                if fabsf(dot_pq) < EPSILON * sqrtf(dot_pp * dot_qq) {
+                    continue;
+                }
+
+                converged = false;
+                let (cos, sin) = jacobi_rotation(dot_pp, dot_qq, dot_pq);
+
+                let new_b_p = col_p * cos - col_q * sin;
+                let new_b_q = col_p * sin + col_q * cos;
+                b.set_col(p, &new_b_p);
+                b.set_col(q, &new_b_q);
+
+                let v_col_p = v.get_col(p).unwrap();
+                let v_col_q = v.get_col(q).unwrap();
+                let new_v_p = v_col_p * cos - v_col_q * sin;
+                let new_v_q = v_col_p * sin + v_col_q * cos;
+                v.set_col(p, &new_v_p);
+                v.set_col(q, &new_v_q);
+            }
+        }
+        iter += 1;
+        if converged || iter >= max_iter {
+            break;
+        }
+    }
+
+    let mut sigma = Vector::<N>::new([0.0; N]);
+    let mut u = Matrix::<M, N>::new();
+
+    for i in 0..N {
+        let col = b.get_col(i).unwrap();
+        let norm = col.l2_norm();
+        sigma[i] = norm;
+        if norm > EPSILON {
+            u.set_col(i, &(col * (1.0 / norm)));
+        } else {
+            u.set_col(i, &col);
+        }
+    }
+
+    sort_svd(&mut sigma, &mut u, &mut v);
     (u, sigma, v)
 }
 
@@ -176,9 +269,9 @@ mod tests {
         let (q, r) = qr_decomposition(&a);
 
         // A = QR
-        assert_eq!(&q * &r, a);
+        assert_eq!(q * r, a);
         // Q is orthogonal
-        let i_check = &q.transpose() * &q;
+        let i_check = q.transpose() * q;
         assert_eq!(i_check, crate::matrix::identity::<2>());
     }
 
@@ -234,7 +327,7 @@ mod tests {
         a[(2, 1)] = 24.0;
 
         let (q, r) = qr_decomposition(&a);
-        assert_eq!(&q * &r, a);
+        assert_eq!(q * r, a);
     }
 
     #[test]
@@ -267,13 +360,133 @@ mod tests {
         assert_eq!(proj, Vector::new([1.0, 0.0, 0.0]));
     }
     #[test]
-    fn test_svd_2X2() {
+    fn test_svd_2x2() {
+        let mut a = Matrix::<2, 2>::new();
+        a[(0, 0)] = 2.0;
+        a[(0, 1)] = 1.0;
+        a[(1, 0)] = 1.0;
+        a[(1, 1)] = 2.0;
+        let (u, _, _) = svd_2x2(&a);
+        assert!(u.get_col(0).unwrap().dot(&u.get_col(1).unwrap()).abs() < 1e-5);
+    }
+    #[test]
+    fn test_svd_reconstruction_3x3() {
+        let mut a = Matrix::<3, 3>::new();
+        a[(0, 0)] = 4.0; a[(0, 1)] = 2.0; a[(0, 2)] = 1.0;
+        a[(1, 0)] = 2.0; a[(1, 1)] = 3.0; a[(1, 2)] = 1.0;
+        a[(2, 0)] = 1.0; a[(2, 1)] = 1.0; a[(2, 2)] = 2.0;
+
+        let (u, sigma, v) = svd(&a);
+
+        let mut sigma_mat = Matrix::<3, 3>::new();
+        sigma_mat[(0, 0)] = sigma[0];
+        sigma_mat[(1, 1)] = sigma[1];
+        sigma_mat[(2, 2)] = sigma[2];
+
+        assert_eq!(u * sigma_mat * v.transpose(), a);
+        assert_eq!(u.transpose() * u, crate::matrix::identity::<3>());
+        assert_eq!(v.transpose() * v, crate::matrix::identity::<3>());
+    }
+
+    #[test]
+    fn test_svd_identity_3x3() {
+        let a = crate::matrix::identity::<3>();
+        let (_, sigma, _) = svd(&a);
+        for i in 0..3 {
+            assert!((sigma[i] - 1.0).abs() < 1e-5, "sigma[{i}] = {}", sigma[i]);
+        }
+    }
+
+    #[test]
+    fn test_svd_reconstruction_4x4() {
+        let mut a = Matrix::<4, 4>::new();
+        a[(0, 0)] = 5.0; a[(0, 1)] = 1.0; a[(0, 2)] = 2.0; a[(0, 3)] = 0.0;
+        a[(1, 0)] = 1.0; a[(1, 1)] = 4.0; a[(1, 2)] = 1.0; a[(1, 3)] = 1.0;
+        a[(2, 0)] = 2.0; a[(2, 1)] = 1.0; a[(2, 2)] = 3.0; a[(2, 3)] = 0.0;
+        a[(3, 0)] = 0.0; a[(3, 1)] = 1.0; a[(3, 2)] = 0.0; a[(3, 3)] = 2.0;
+
+        let (u, sigma, v) = svd(&a);
+
+        let mut sigma_mat = Matrix::<4, 4>::new();
+        for i in 0..4 { sigma_mat[(i, i)] = sigma[i]; }
+
+        assert_eq!(u * sigma_mat * v.transpose(), a);
+        assert_eq!(u.transpose() * u, crate::matrix::identity::<4>());
+        assert_eq!(v.transpose() * v, crate::matrix::identity::<4>());
+    }
+
+    // --- Timing (cargo test -- --nocapture pour voir les résultats) ---
+
+    #[test]
+    fn bench_matmul() {
+        let mut a2 = Matrix::<2, 2>::new();
+        a2[(0, 0)] = 1.0; a2[(0, 1)] = 2.0; a2[(1, 0)] = 3.0; a2[(1, 1)] = 4.0;
+
+        let mut a3 = Matrix::<3, 3>::new();
+        for i in 0..3 { for j in 0..3 { a3[(i, j)] = (i * 3 + j + 1) as f32; } }
+
+        let mut a4 = Matrix::<4, 4>::new();
+        for i in 0..4 { for j in 0..4 { a4[(i, j)] = (i * 4 + j + 1) as f32; } }
+
+        let n = 100_000u32;
+
+        let t = std::time::Instant::now();
+        for _ in 0..n { let _ = a2 * a2; }
+        println!("matmul 2x2 x{n}: {:?} ({:.1}ns/iter)", t.elapsed(), t.elapsed().as_nanos() as f64 / n as f64);
+
+        let t = std::time::Instant::now();
+        for _ in 0..n { let _ = a3 * a3; }
+        println!("matmul 3x3 x{n}: {:?} ({:.1}ns/iter)", t.elapsed(), t.elapsed().as_nanos() as f64 / n as f64);
+
+        let t = std::time::Instant::now();
+        for _ in 0..n { let _ = a4 * a4; }
+        println!("matmul 4x4 x{n}: {:?} ({:.1}ns/iter)", t.elapsed(), t.elapsed().as_nanos() as f64 / n as f64);
+    }
+
+    #[test]
+    fn bench_svd() {
+        let mut a2 = Matrix::<2, 2>::new();
+        a2[(0, 0)] = 2.0; a2[(0, 1)] = 1.0; a2[(1, 0)] = 1.0; a2[(1, 1)] = 2.0;
+
+        let mut a3 = Matrix::<3, 3>::new();
+        a3[(0, 0)] = 4.0; a3[(0, 1)] = 2.0; a3[(0, 2)] = 1.0;
+        a3[(1, 0)] = 2.0; a3[(1, 1)] = 3.0; a3[(1, 2)] = 1.0;
+        a3[(2, 0)] = 1.0; a3[(2, 1)] = 1.0; a3[(2, 2)] = 2.0;
+
+        let mut a4 = Matrix::<4, 4>::new();
+        a4[(0, 0)] = 5.0; a4[(0, 1)] = 1.0; a4[(0, 2)] = 2.0; a4[(0, 3)] = 0.0;
+        a4[(1, 0)] = 1.0; a4[(1, 1)] = 4.0; a4[(1, 2)] = 1.0; a4[(1, 3)] = 1.0;
+        a4[(2, 0)] = 2.0; a4[(2, 1)] = 1.0; a4[(2, 2)] = 3.0; a4[(2, 3)] = 0.0;
+        a4[(3, 0)] = 0.0; a4[(3, 1)] = 1.0; a4[(3, 2)] = 0.0; a4[(3, 3)] = 2.0;
+
+        let n = 10_000u32;
+
+        let t = std::time::Instant::now();
+        for _ in 0..n { let _ = svd_2x2(&a2); }
+        println!("svd 2x2 x{n}: {:?} ({:.1}ns/iter)", t.elapsed(), t.elapsed().as_nanos() as f64 / n as f64);
+
+        let t = std::time::Instant::now();
+        for _ in 0..n { let _ = svd(&a3); }
+        println!("svd 3x3 x{n}: {:?} ({:.1}ns/iter)", t.elapsed(), t.elapsed().as_nanos() as f64 / n as f64);
+
+        let t = std::time::Instant::now();
+        for _ in 0..n { let _ = svd(&a4); }
+        println!("svd 4x4 x{n}: {:?} ({:.1}ns/iter)", t.elapsed(), t.elapsed().as_nanos() as f64 / n as f64);
+    }
+
+    #[test]
+    fn test_svd_recomposition() {
         let mut a = Matrix::<2, 2>::new();
         a[(0, 0)] = 2.0;
         a[(0, 1)] = 1.0;
         a[(1, 0)] = 1.0;
         a[(1, 1)] = 2.0;
         let (u, sigma, v) = svd_2x2(&a);
-        assert!(u.get_col(0).unwrap().dot(&u.get_col(1).unwrap()).abs() < 1e-5);
+        let mut sigma_mat = Matrix::<2, 2>::new();
+        sigma_mat[(0, 0)] = sigma[0];
+        sigma_mat[(1, 1)] = sigma[1];
+        let tmp = u * sigma_mat;
+        let reconstructed = tmp * v.transpose();
+        assert_eq!(a, reconstructed);
     }
 }

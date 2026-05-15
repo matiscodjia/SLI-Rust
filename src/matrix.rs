@@ -118,9 +118,9 @@ pub fn identity<const SIZE: usize>() -> Matrix<SIZE, SIZE> {
 }
 
 // Operators for Static Matrices
-impl<const ROWS: usize, const COLS: usize> Add<&Matrix<ROWS, COLS>> for &Matrix<ROWS, COLS> {
+impl<const ROWS: usize, const COLS: usize> Add<Matrix<ROWS, COLS>> for Matrix<ROWS, COLS> {
     type Output = Matrix<ROWS, COLS>;
-    fn add(self, rhs: &Matrix<ROWS, COLS>) -> Self::Output {
+    fn add(self, rhs: Matrix<ROWS, COLS>) -> Self::Output {
         let mut res = Matrix::new();
         for i in 0..ROWS {
             for j in 0..COLS {
@@ -131,9 +131,9 @@ impl<const ROWS: usize, const COLS: usize> Add<&Matrix<ROWS, COLS>> for &Matrix<
     }
 }
 
-impl<const ROWS: usize, const COLS: usize> Sub<&Matrix<ROWS, COLS>> for &Matrix<ROWS, COLS> {
+impl<const ROWS: usize, const COLS: usize> Sub<Matrix<ROWS, COLS>> for Matrix<ROWS, COLS> {
     type Output = Matrix<ROWS, COLS>;
-    fn sub(self, rhs: &Matrix<ROWS, COLS>) -> Self::Output {
+    fn sub(self, rhs: Matrix<ROWS, COLS>) -> Self::Output {
         let mut res = Matrix::new();
         for i in 0..ROWS {
             for j in 0..COLS {
@@ -145,10 +145,10 @@ impl<const ROWS: usize, const COLS: usize> Sub<&Matrix<ROWS, COLS>> for &Matrix<
 }
 
 // Global Mul operator for Matrix * Matrix
-impl<const M: usize, const N: usize, const P: usize> Mul<&Matrix<N, P>> for &Matrix<M, N> {
+impl<const M: usize, const N: usize, const P: usize> Mul<Matrix<N, P>> for Matrix<M, N> {
     type Output = Matrix<M, P>;
-    fn mul(self, rhs: &Matrix<N, P>) -> Self::Output {
-        self.multiply(rhs)
+    fn mul(self, rhs: Matrix<N, P>) -> Self::Output {
+        self.multiply(&rhs)
     }
 }
 
@@ -215,7 +215,7 @@ mod tests {
         m1[(0, 0)] = 1.0;
         let mut m2 = Matrix::<2, 2>::new();
         m2[(0, 0)] = 2.0;
-        assert_eq!(&m1 + &m2, {
+        assert_eq!(m1 + m2, {
             let mut res = Matrix::<2, 2>::new();
             res[(0, 0)] = 3.0;
             res
@@ -234,7 +234,7 @@ mod tests {
         m2[(0, 0)] = 5.0;
         m2[(1, 0)] = 6.0;
 
-        let res = &m1 * &m2;
+        let res = m1 * m2;
         assert_eq!(res[(0, 0)], 17.0); // 1*5 + 2*6
         assert_eq!(res[(1, 0)], 39.0); // 3*5 + 4*6
     }
