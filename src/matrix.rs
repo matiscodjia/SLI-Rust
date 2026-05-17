@@ -97,6 +97,19 @@ impl<const ROWS: usize, const COLS: usize> Matrix<ROWS, COLS> {
         result
     }
 
+    /// Multiplies the matrix by a column vector: (ROWS x COLS) * (COLS) → (ROWS).
+    pub fn mul_vec(&self, v: &Vector<COLS>) -> Vector<ROWS> {
+        let mut result = [0.0; ROWS];
+        for i in 0..ROWS {
+            let mut sum = 0.0;
+            for j in 0..COLS {
+                sum += self.data[i][j] * v[j];
+            }
+            result[i] = sum;
+        }
+        Vector::new(result)
+    }
+
     /// Scales the matrix by a coefficient.
     pub fn scale(&self, coef: f32) -> Self {
         let mut result = Self::new();

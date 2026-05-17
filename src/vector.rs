@@ -1,4 +1,4 @@
-use core::ops::{Add, Index, IndexMut, Mul, Sub};
+use core::ops::{Add, Div, Index, IndexMut, Mul, Neg, Sub};
 use libm::{fabsf, sqrtf};
 
 /// A Static Vector of size N, stored entirely on the stack.
@@ -70,6 +70,24 @@ impl<const N: usize> Vector<N> {
     pub const fn get_data(&self) -> &[f32; N] {
         &self.data
     }
+
+    /// Sum of all elements.
+    pub fn sum(&self) -> f32 {
+        let mut s = 0.0;
+        for &v in &self.data {
+            s += v;
+        }
+        s
+    }
+
+    /// Element-wise multiply (Hadamard product).
+    pub fn hadamard(&self, other: &Vector<N>) -> Vector<N> {
+        let mut data = [0.0; N];
+        for i in 0..N {
+            data[i] = self.data[i] * other.data[i];
+        }
+        Vector::new(data)
+    }
 }
 
 // Operator implementations for Static Vectors
@@ -124,6 +142,20 @@ impl<const N: usize> Sub<Vector<N>> for Vector<N> {
     type Output = Vector<N>;
     fn sub(self, rhs: Vector<N>) -> Self::Output {
         &self - &rhs
+    }
+}
+
+impl<const N: usize> Neg for Vector<N> {
+    type Output = Vector<N>;
+    fn neg(self) -> Self::Output {
+        self * -1.0
+    }
+}
+
+impl<const N: usize> Div<f32> for Vector<N> {
+    type Output = Vector<N>;
+    fn div(self, rhs: f32) -> Self::Output {
+        self * (1.0 / rhs)
     }
 }
 
