@@ -1,14 +1,18 @@
 [package]
-name = "linear_algebra"
+name = "ferrite"
 version = "0.1.0"
 edition = "2021"
+description = "Static deep learning framework for bare-metal microcontrollers — no_std, no heap, no runtime"
+repository = "https://github.com/matiscodjia/ferrite"
+license = "MIT"
+keywords = ["no-std", "embedded", "deep-learning", "neural-network", "microcontroller"]
+categories = ["no-std", "embedded", "science"]
 
 [dependencies]
 libm = { version = "0.2.16", default-features = false }
-# No dependencies for now, keeping it lean.
 
 [features]
-# By default, we use 'std' for development on MacOS.
-# To compile for STM32, we will use --no-default-features.
+# Default : std activé pour le développement et les tests sur Mac.
+# Pour compiler pour STM32 : cargo build --target thumbv7em-none-eabihf --no-default-features
 default = ["std"]
 std = []

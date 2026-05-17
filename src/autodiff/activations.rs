@@ -103,3 +103,51 @@ impl<const N: usize> Update for Tanh<N> {
     type Gradients = ();
     fn update(&mut self, _grads: &Self::Gradients, _lr: f32) {}
 }
+
+#[derive(Clone, Copy)]
+pub struct Softmax<const N: usize> {}
+
+impl<const N: usize> Module<Vector<N>> for Softmax<N> {
+    type Output = Vector<N>;
+    // Context stocke s = softmax(x) — nécessaire pour le VJP backward.
+    type Context = Vector<N>;
+    type Gradients = ();
+
+    fn forward(&self, x: Vector<N>) -> (Self::Output, Self::Context) {
+        // Soustraction du max pour la stabilité numérique : évite exp(grand nombre) = inf.
+        let mut max = x[0];
+        for i in 1..N {
+            if x[i] > max {
+                max = x[i];
+            }
+        }
+        let mut data = [0.0; N];
+        let mut sum = 0.0;
+        for i in 0..N {
+            data[i] = expf(x[i] - max);
+            sum += data[i];
+        }
+        for i in 0..N {
+            data[i] /= sum;
+        }
+        let output = Vector::new(data);
+        (output, output)
+    }
+
+    fn backward(&self, grad_out: Self::Output, ctx: &Self::Context) -> (Vector<N>, Self::Gradients) {
+        let s = ctx;
+        // VJP de softmax : grad_in[i] = s[i] * (grad_out[i] - dot(grad_out, s))
+        // Avec cross-entropy en amont, ça se simplifie automatiquement à s - y_true.
+        let dot = grad_out.dot(s);
+        let mut result = [0.0; N];
+        for i in 0..N {
+            result[i] = s[i] * (grad_out[i] - dot);
+        }
+        (Vector::new(result), ())
+    }
+}
+
+impl<const N: usize> Update for Softmax<N> {
+    type Gradients = ();
+    fn update(&mut self, _grads: &Self::Gradients, _lr: f32) {}
+}
